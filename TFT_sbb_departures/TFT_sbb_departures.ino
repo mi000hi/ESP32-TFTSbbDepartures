@@ -13,28 +13,35 @@
 #include <SPI.h>
 #include <TFT_eSPI.h> // using the ili9488 display driver
 
-#include "utils.h"
 
+// my custom libraries
+#include "utils.h"
 #include "sbb_api.h"
 #include "publibike_api.h"
 
 
 
 #define SERIAL_BAUDRATE 115200
-#define WIFI_NETWORK_NUMBER 1
+#define WIFI_NETWORK_NUMBER 1 // see utils.cpp
 
 #define API_TIME_FORMAT "%Y-%m-%dT%H:%M:%S"
-#define NR_OF_CONNECTIONS 15
+#define NR_OF_SBB_CONNECTIONS 15 // nr of connections to fetch from SBB API
 
-#define TFT_WIDTH 480
-#define TFT_HEIGHT 320
+#define TFT_WIDTH 480 // screen width
+#define TFT_HEIGHT 320 // screen height
 
+
+
+// library specific initializations
 sbb_api my_sbb_api;
 publibike_api my_publibike_api;
-
 TFT_eSPI tft = TFT_eSPI(); // Invoke custom library, pin declaration in User_Setup_Select.h
 
+
+
+// stores the minute the API was updated, therefore every minute an API request takes place
 int last_min_updated = 0;
+
 
 
 void setup() {
@@ -126,11 +133,13 @@ void loop() {
   //
 
   // send API request
-  SBB_Connection connections[NR_OF_CONNECTIONS];
-  my_sbb_api.get_connections(connections, current_date_and_time, current_date_and_time, NR_OF_CONNECTIONS);
+  SBB_Connection connections[NR_OF_SBB_CONNECTIONS];
+  my_sbb_api.get_connections(connections, current_date_and_time, current_date_and_time, NR_OF_SBB_CONNECTIONS);
 
   // send PUBLIBIKE API requests
-  int* bikes = my_publibike_api.get_available_bikes("Radiostudio");
+  int error = 0;
+  int bikes[2];
+  error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
 
   // get two trams in each direction
   int nr_of_connections = 3;
@@ -138,7 +147,7 @@ void loop() {
   SBB_Connection trams_auzelg[nr_of_connections];
   int counter_rehalp = 0;
   int counter_auzelg = 0;
-  for(int i = 0; i < NR_OF_CONNECTIONS; i++) {
+  for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
     if(connections[i].vehicleType == TRAM) {
       if(string_equal(connections[i].destination, "Zürich, Rehalp") && counter_rehalp < nr_of_connections) {
         trams_rehalp[counter_rehalp] = connections[i];
@@ -241,7 +250,7 @@ void loop() {
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   String connections_destination, connections_time;
   tft.fillRect(connections_x, connections_y, TFT_WIDTH, TFT_HEIGHT, TFT_WHITE);
-  for(int i = 0; i < NR_OF_CONNECTIONS; i++) {
+  for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
     connection = connections[i];
 
     // dont show regular T11
@@ -281,7 +290,7 @@ void loop() {
   int col1_tram = col1 + connections_tram_x;
   int col2_tram = col2 + connections_tram_x;
   int col3_tram = col3 + connections_tram_x;
-  for(int i = 0; i < NR_OF_CONNECTIONS; i++) {
+  for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
     connection = connections[i];
 
     // dont show regular T11

@@ -19,8 +19,8 @@ private:
   String api_format = "geometryFormat=esrijson";
 
 public:
-  String api_send_request(String api_request_url);  
-  int* get_available_bikes(String station_name);
+  int api_send_request(String* payload_buffer, String api_request_url);  
+  int get_available_bikes(int* bike_buffer, String station_name);
 
 };
 

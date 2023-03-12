@@ -2,6 +2,14 @@
 
 String sbb_api::send_api_request(String timestamp, String time_of_departure, int nr_of_results) {
 
+  // check timestamp format: "2023-02-20T20:03:00"
+  if(timestamp.length() != 19 || time_of_departure.length() != 19) {
+    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 19 characters");
+  }
+  if(timestamp.indexOf("T") != 10 || time_of_departure.indexOf("T") != 10) {
+    Serial.println("sbb API - ERROR: timestamp expects a `T` character at position 10");
+  }
+
   // Make an HTTP POST request to the TRIAS StopEventRequest API
   http.begin(apiEndpoint);
 
@@ -11,10 +19,11 @@ String sbb_api::send_api_request(String timestamp, String time_of_departure, int
 
   // String timestamp = "2023-02-20T20:03:00";
   // String time_of_departure = "2023-02-20T20:04:11";
-  String requestorRef = "LCD_SBB_departures";
+  String requestorRef = "TFT_SBB_departures";
   String nrOfResults = String(nr_of_results);
 
    // Define the XML payload as a String
+   // INFO: if onward calls or previous calls are enabled, make sure that the nr_of_results is small enough! else http error code -7
   String xmlPayload = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
   xmlPayload += "<Trias version=\"1.1\" xmlns=\"http://www.vdv.de/trias\" xmlns:siri=\"http://www.siri.org.uk/siri\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">";
   xmlPayload += "<ServiceRequest>";
@@ -49,11 +58,10 @@ String sbb_api::send_api_request(String timestamp, String time_of_departure, int
 
     // Read the response payload
     responseStr = http.getString();
-    delay(1000);
     // Serial.println("Response: " + responseStr);
 
   } else {
-    Serial.print("sbb api - ERROR: ");
+    Serial.print("sbb API - ERROR: received http code ");
     Serial.println(httpResponseCode);
   }
 
@@ -65,9 +73,9 @@ String sbb_api::send_api_request(String timestamp, String time_of_departure, int
 
 void sbb_api::get_connections(SBB_Connection* connections, String timestamp, String time_of_departure, int nr_of_results) {
 
-  int nr_of_tries = 3;
+  int nr_of_tries = 2;
+  
 START:
-
   // send API request
   String response = send_api_request(timestamp, time_of_departure, nr_of_results);
   delay(200);
@@ -158,10 +166,19 @@ START:
     // strip connection from response
     response = response.substring(connection_end + 1);
   }
-
 }
 
 int sbb_api::get_delay_in_seconds(String str_timetable_time, String str_actual_time) {
+
+  // check timestamp format: "2023-02-20T20:03:00"
+  if(timestamp.length() != 19 || time_of_departure.length() != 19) {
+    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 19 characters in get_delay_in_seconds()");
+  }
+  if(timestamp.indexOf("T") != 10 || time_of_departure.indexOf("T") != 10) {
+    Serial.println("sbb API - ERROR: timestamp expects a `T` character at position 10 in get_delay_in_seconds()");
+  }
+
+  // calculate delay
   String parts[3];
 
   string_split(str_timetable_time, 'T', parts, 2);
