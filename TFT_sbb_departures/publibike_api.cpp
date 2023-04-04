@@ -46,15 +46,31 @@ int publibike_api::get_available_bikes(int* bike_buffer, String station_name) {
 
   // double-check the received stationname
   int start = payload_bike.indexOf(station_name);
-  String station_bike = string_text_between(payload_bike, "\"station.name\":\"", "\",\"station.status.installed", start-15);
-  String station_ebike = string_text_between(payload_ebike, "\"station.name\":\"", "\",\"station.status.installed", start-15);
-  if(start == -1 || (!string_equal(station_bike, station_name) || !string_equal(station_ebike, station_name))) {
-    Serial.println(payload_bike);
-    Serial.println(payload_ebike);
-    Serial.println("publibike API - ERROR: Station name is not correct (bike)! ");// Is: " + station_bike + ", should: " + station_name);
-    Serial.println("publibike API - ERROR: Station name is not correct (ebike)! ");//Is: " + station_ebike + ", should: " + station_name);
+  String station_bike = string_text_between(payload_bike, "\"station.name\":\"", "\",\"station.status.installed", start-16);
+  String station_ebike = string_text_between(payload_ebike, "\"station.name\":\"", "\",\"station.status.installed", start-16);
 
-    error = -1;
+  while(!string_equal(station_bike, station_name) || !string_equal(station_ebike, station_name)) {
+
+    Serial.println("publibike API - INFO: start=" + String(start));
+
+    if(start == -1) {
+      
+      Serial.println(payload_bike);
+      Serial.println(payload_ebike);
+      Serial.println("publibike API - ERROR: Station name is not correct (bike)! start=" + String(start) + "Is: " + station_bike);// Is: " + station_bike + ", should: " + station_name);
+      Serial.println("publibike API - ERROR: Station name is not correct (ebike)! start=" + String(start) + "Is: " + station_bike);//Is: " + station_ebike + ", should: " + station_name);
+      Serial.println("                       station_bike=" + station_bike);
+      Serial.println("                       station_name=" + station_name);
+    
+      error = -1;
+      break;
+    }
+
+    start = payload_bike.indexOf(station_name, start+1);
+    station_bike = string_text_between(payload_bike, "\"station.name\":\"", "\",\"station.status.installed", start-15);
+    station_ebike = string_text_between(payload_ebike, "\"station.name\":\"", "\",\"station.status.installed", start-15);
+    
+    Serial.println("publibike API - INFO: station_bike=" + station_bike + " station_ebike=" + station_ebike);
   }
 
   // get amount of bikes available

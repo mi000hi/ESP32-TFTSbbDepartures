@@ -3,8 +3,8 @@
 String sbb_api::send_api_request(String timestamp, String time_of_departure, int nr_of_results) {
 
   // check timestamp format: "2023-02-20T20:03:00"
-  if(timestamp.length() != 19 || time_of_departure.length() != 19) {
-    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 19 characters");
+  if(timestamp.length() != 20 || time_of_departure.length() != 20) {
+    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 19 characters: timestamp.length=" + String(timestamp.length()) + " time_of_departure.length=" + String(time_of_departure.length()));
   }
   if(timestamp.indexOf("T") != 10 || time_of_departure.indexOf("T") != 10) {
     Serial.println("sbb API - ERROR: timestamp expects a `T` character at position 10");
@@ -171,11 +171,13 @@ START:
 int sbb_api::get_delay_in_seconds(String str_timetable_time, String str_actual_time) {
 
   // check timestamp format: "2023-02-20T20:03:00"
-  if(timestamp.length() != 19 || time_of_departure.length() != 19) {
-    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 19 characters in get_delay_in_seconds()");
+  if(str_timetable_time.length() != 20 || str_actual_time.length() != 20) {
+    Serial.println("sbb API - ERROR: timestamp format differs from expected length of 20 characters in get_delay_in_seconds()");
+    Serial.println("                 timetable_time=" + str_timetable_time + " actual_time=" + str_actual_time);
   }
-  if(timestamp.indexOf("T") != 10 || time_of_departure.indexOf("T") != 10) {
+  if(str_timetable_time.indexOf("T") != 10 || str_actual_time.indexOf("T") != 10) {
     Serial.println("sbb API - ERROR: timestamp expects a `T` character at position 10 in get_delay_in_seconds()");
+    Serial.println("                 timetable_time=" + str_timetable_time + " actual_time=" + str_actual_time);
   }
 
   // calculate delay
@@ -209,6 +211,11 @@ int sbb_api::get_delay_in_seconds(String str_timetable_time, String str_actual_t
   }
 
   int delayInSeconds = delay_hours * 3600 + delay_minutes * 60 + delay_seconds;
+
+  // day rollover
+  if(delayInSeconds < -10000) {
+    delayInSeconds += 24*3600;
+  }
   return delayInSeconds;
 }
 

@@ -119,7 +119,7 @@ void time_zulu_to_local(int *from_time, int *to_time_buffer, bool is_summer) {
   if(is_summer) {
     hours_to_add = 1;
   }
-  to_time_buffer[0] = from_time[0] + hours_to_add;
+  to_time_buffer[0] = (from_time[0] + hours_to_add)%24;
   to_time_buffer[1] = from_time[1];
   to_time_buffer[2] = from_time[2];
 }

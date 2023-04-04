@@ -30,7 +30,7 @@
 #define TFT_WIDTH 480 // screen width
 #define TFT_HEIGHT 320 // screen height
 
-
+#define IS_SUMMER_TIME true // 1 in summer, 0 in winter
 
 // library specific initializations
 sbb_api my_sbb_api;
@@ -50,12 +50,14 @@ void setup() {
   Serial.begin(SERIAL_BAUDRATE);
   Serial.println("\nRunning the setup() function...");
 
+  Serial.println("SPI frequency: " + String(SPI_FREQUENCY));  
+
   // setup the TFT screen
   tft.init();
   tft.setRotation(3); // connections on the left side of the display
   tft.setCursor(0,0,2);
-  tft.fillScreen(TFT_WHITE);
-  tft.setTextColor(TFT_BLACK);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
   tft.println("Display initialized...");
   
@@ -79,7 +81,7 @@ void setup() {
 
   tft.println("setup() finished...\n");
   delay(1000);
-  tft.fillScreen(TFT_WHITE);
+  tft.fillScreen(TFT_BLACK);
 }
 
 void loop() {
@@ -89,8 +91,11 @@ void loop() {
   int current_time_int[3];
   last_min_updated = current_time_int[1];
   int epoch_time = ntp_time_getEpochTime();
-  String current_date_and_time = format_time(epoch_time, API_TIME_FORMAT);
+  String current_date_and_time = format_time(epoch_time, API_TIME_FORMAT) + "Z";
+
   my_sbb_api.timestring_to_ints(current_date_and_time, current_time_int);
+  time_zulu_to_local(current_time_int, current_time_int, IS_SUMMER_TIME);
+  epoch_time += IS_SUMMER_TIME * 3600;
   String current_time = format_time(epoch_time, "%H:%M:%S");
 
   int current_time_y = 5; // top padding
@@ -98,12 +103,12 @@ void loop() {
 
   // display the current time
   tft.setTextDatum(TC_DATUM);
-  tft.setTextColor(TFT_RED, TFT_WHITE);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
   tft.drawString(current_time, current_time_x, current_time_y, 7);
 
   // draw horizontal black line
   int first_line_y = current_time_y + tft.fontHeight(7) + 5; // including padding
-  tft.drawWideLine(0, first_line_y, TFT_WIDTH, first_line_y, 2.0, TFT_BLACK, TFT_WHITE);
+  tft.drawWideLine(0, first_line_y, TFT_WIDTH, first_line_y, 2.0, TFT_WHITE, TFT_WHITE);
 
 
   // draw SOUTH and NORTH labels
@@ -172,13 +177,13 @@ void loop() {
   int tram_connections_south_x = label_padding_to_border + label1_height + 5; // including padding
   int tram_connections_north_x = TFT_WIDTH - tram_connections_south_x - tft.textWidth("12:34:56+0", 4);
   int tram_connections_y = tram_connections_top_y + 10; // including padding
-  tft.fillRect(tram_connections_south_x, tram_connections_y, 185, 80, TFT_WHITE);
-  tft.fillRect(tram_connections_north_x-60, tram_connections_y, 185, 80, TFT_WHITE);
+  tft.fillRect(tram_connections_south_x, tram_connections_y, 185, 80, TFT_BLACK);
+  tft.fillRect(tram_connections_north_x-60, tram_connections_y, 185, 80, TFT_BLACK);
   for(int i = 0; i < nr_of_connections; i++) {
 
     // rehalp
     my_sbb_api.timestring_to_ints(trams_rehalp[i].TimetabledTime, time);
-    time_zulu_to_local(time, time, true);
+    time_zulu_to_local(time, time, IS_SUMMER_TIME);
     tram_rehalp = string_time_from_ints(time);
     delay_mins = trams_rehalp[i].delay_seconds / 60;
     if(delay_mins >= 10) {
@@ -194,7 +199,7 @@ void loop() {
 
     // auzelg
     my_sbb_api.timestring_to_ints(trams_auzelg[i].TimetabledTime, time);
-    time_zulu_to_local(time, time, true);
+    time_zulu_to_local(time, time, IS_SUMMER_TIME);
     tram_auzelg = string_time_from_ints(time);
     delay_mins = trams_auzelg[i].delay_seconds / 60;
     if(delay_mins >= 10) {
@@ -210,7 +215,7 @@ void loop() {
 
     // display the connection
     tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.drawString(tram_rehalp, tram_connections_south_x, tram_connections_y, 4);
     tft.drawString(tram_auzelg, tram_connections_north_x, tram_connections_y, 4);
     tram_connections_y += tft.fontHeight(4);
@@ -230,15 +235,15 @@ void loop() {
   tft.drawString("PUB", publibike_label_x, publibike_label_y + publibike_label_height/2, 2);
 
   int publibike_y = publibike_label_y + publibike_label_height + 10; // including padding
-  tft.fillRect(publibike_label_x - 30, publibike_y, 60, 30, TFT_WHITE);
+  tft.fillRect(publibike_label_x - 30, publibike_y, 60, 30, TFT_BLACK);
   tft.setTextDatum(TC_DATUM);
-  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString(bike_string, publibike_label_x, publibike_y, 4);
 
   
   // horizontal line
   int second_line_y = tram_connections_top_y + label1_width + 5; // including padding
-  tft.drawWideLine(0, second_line_y, TFT_WIDTH, second_line_y, 2.0, TFT_BLACK, TFT_WHITE);
+  tft.drawWideLine(0, second_line_y, TFT_WIDTH, second_line_y, 2.0, TFT_WHITE, TFT_WHITE);
 
 
   // other connections
@@ -247,14 +252,15 @@ void loop() {
   int col1 = connections_x, col2 = 70, col3 = 105;
   SBB_Connection connection;
   tft.setTextFont(2);
-  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   String connections_destination, connections_time;
-  tft.fillRect(connections_x, connections_y, TFT_WIDTH, TFT_HEIGHT, TFT_WHITE);
+  tft.fillRect(connections_x, connections_y, TFT_WIDTH, TFT_HEIGHT, TFT_BLACK);
   for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
     connection = connections[i];
 
     // dont show regular T11
-    if(connection.vehicleType == TRAM && (string_equal(connection.destination, "Zürich, Rehalp") || string_equal(connection.destination, "Zürich, Auzelg"))) {
+    // if(connection.vehicleType == TRAM && (string_equal(connection.destination, "Zürich, Rehalp") || string_equal(connection.destination, "Zürich, Auzelg"))) {
+    if(connection.vehicleType == TRAM) {
       continue;
     }
 
@@ -265,7 +271,7 @@ void loop() {
       connections_time = connection.EstimatedTime;
     }
     my_sbb_api.timestring_to_ints(connections_time, time);
-    time_zulu_to_local(time, time, true);
+    time_zulu_to_local(time, time, IS_SUMMER_TIME);
     tft.print(string_time_from_ints(time));
     
     tft.setCursor(col2, connections_y);
@@ -282,7 +288,7 @@ void loop() {
   // vertical line
   int third_line_x = TFT_WIDTH/2;
   int third_line_y = second_line_y; // including padding
-  tft.drawWideLine(third_line_x, third_line_y, third_line_x, TFT_HEIGHT, 2.0, TFT_BLACK, TFT_WHITE);
+  tft.drawWideLine(third_line_x, third_line_y, third_line_x, TFT_HEIGHT, 2.0, TFT_WHITE, TFT_WHITE);
 
   // tram connections
   int connections_tram_x = TFT_WIDTH/2;
@@ -305,7 +311,7 @@ void loop() {
       connections_time = connection.EstimatedTime;
     }
     my_sbb_api.timestring_to_ints(connections_time, time);
-    time_zulu_to_local(time, time, true);
+    time_zulu_to_local(time, time, IS_SUMMER_TIME);
     tft.print(string_time_from_ints(time));
     
     tft.setCursor(col2_tram, connections_tram_y);
@@ -320,27 +326,35 @@ void loop() {
 
 
   // delay counter
-  int time_to_rehalp_sec = my_sbb_api.get_delay_in_seconds(current_date_and_time, trams_rehalp[0].EstimatedTime);
-  int time_to_auzelg_sec = my_sbb_api.get_delay_in_seconds(current_date_and_time, trams_auzelg[0].EstimatedTime);
-
-  // summer correction
-  if(true) {
-    time_to_rehalp_sec += 3600;
-    time_to_auzelg_sec += 3600;
+  if(string_equal(trams_rehalp[0].EstimatedTime, "-1")) {
+    connections_time = trams_rehalp[0].TimetabledTime;
+  } else {
+    connections_time = trams_rehalp[0].EstimatedTime;
   }
+  int time_to_rehalp_sec = my_sbb_api.get_delay_in_seconds(current_date_and_time, connections_time);
+
+  if(string_equal(trams_auzelg[0].EstimatedTime, "-1")) {
+    connections_time = trams_auzelg[0].TimetabledTime;
+  } else {
+    connections_time = trams_auzelg[0].EstimatedTime;
+  }
+
+  int time_to_auzelg_sec = my_sbb_api.get_delay_in_seconds(current_date_and_time, connections_time);
 
   int delay_rehalp_x = TFT_WIDTH/2 - 30;
   int delay_auzelg_x = TFT_WIDTH/2 + 30;
   int delay_rehalp_y = tram_connections_top_y + 10;
 
   // wait for the next minute to update the database
+  String time_to_auzelg_str = "", time_to_rehalp_str = "";
+
   while(true) {
 
-    tft.setTextColor(TFT_WHITE, TFT_WHITE);
+    tft.setTextColor(TFT_BLACK, TFT_BLACK);
     tft.setTextDatum(TR_DATUM);
-    tft.drawString(String(time_to_rehalp_sec), delay_rehalp_x, delay_rehalp_y, 4);
+    tft.drawString(time_to_rehalp_str, delay_rehalp_x, delay_rehalp_y, 4);
     tft.setTextDatum(TL_DATUM);
-    tft.drawString(String(time_to_auzelg_sec), delay_auzelg_x, delay_rehalp_y, 4);
+    tft.drawString(time_to_auzelg_str, delay_auzelg_x, delay_rehalp_y, 4);
 
     current_time_int[2] += 1;
     time_to_rehalp_sec--;
@@ -349,25 +363,31 @@ void loop() {
 
     // display the current time
     tft.setTextDatum(TC_DATUM);
-    tft.setTextColor(TFT_RED, TFT_WHITE);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
     tft.drawString(current_time, current_time_x, current_time_y, 7);
 
     // display the delays
+    if(abs(time_to_rehalp_sec) > 60) {
+      time_to_rehalp_str = String(time_to_rehalp_sec/60) + ":" + abs(time_to_rehalp_sec)%60;
+    }
+    if(abs(time_to_auzelg_sec) > 60) {
+      time_to_auzelg_str = String(time_to_auzelg_sec/60) + ":" + abs(time_to_auzelg_sec)%60;
+    }
     if(time_to_rehalp_sec > 0) {
-      tft.setTextColor(TFT_GREEN, TFT_WHITE);
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
     } else {
-      tft.setTextColor(TFT_RED, TFT_WHITE);
+      tft.setTextColor(TFT_RED, TFT_BLACK);
     }
     tft.setTextDatum(TR_DATUM);
-    tft.drawString(String(time_to_rehalp_sec), delay_rehalp_x, delay_rehalp_y, 4);
+    tft.drawString(time_to_rehalp_str, delay_rehalp_x, delay_rehalp_y, 4);
 
     if(time_to_auzelg_sec > 0) {
-      tft.setTextColor(TFT_GREEN, TFT_WHITE);
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
     } else {
-      tft.setTextColor(TFT_RED, TFT_WHITE);
+      tft.setTextColor(TFT_RED, TFT_BLACK);
     }
     tft.setTextDatum(TL_DATUM);
-    tft.drawString(String(time_to_auzelg_sec), delay_auzelg_x, delay_rehalp_y, 4);
+    tft.drawString(time_to_auzelg_str, delay_auzelg_x, delay_rehalp_y, 4);
     
     // escape condition
     if(current_time_int[2] >= 59) {
