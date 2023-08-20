@@ -11,8 +11,8 @@
   ##############################################################################
  */
 #include <SPI.h>
-#include <TFT_eSPI.h> // using the ili9488 display driver
 
+#include <TFT_eSPI.h> // using the ili9488 display driver and my own setup file
 
 // my custom libraries
 #include "utils.h"
@@ -20,6 +20,11 @@
 #include "publibike_api.h"
 
 
+
+// deep sleep variables
+#define HOUR_MORNING_START 5
+#define HOUR_EVENING_END 22
+#define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 
 #define SERIAL_BAUDRATE 115200
 #define WIFI_NETWORK_NUMBER 1 // see utils.cpp
@@ -31,6 +36,10 @@
 #define TFT_HEIGHT 320 // screen height
 
 #define IS_SUMMER_TIME true // 1 in summer, 0 in winter
+
+#define TFT_LED_PIN 33
+#define TFT_LED_OFF 0
+#define TFT_LED_ON 1
 
 // library specific initializations
 sbb_api my_sbb_api;
@@ -50,7 +59,18 @@ void setup() {
   Serial.begin(SERIAL_BAUDRATE);
   Serial.println("\nRunning the setup() function...");
 
-  Serial.println("SPI frequency: " + String(SPI_FREQUENCY));  
+  Serial.println("SPI frequency: " + String(SPI_FREQUENCY)); 
+  Serial.println("TFT pins:");
+  Serial.println("  - CS:         " + String(TFT_CS));
+  Serial.println("  - RST:        " + String(TFT_RST));
+  Serial.println("  - DC:         " + String(TFT_DC));
+  Serial.println("  - SDI (MOSI): " + String(TFT_MOSI));
+  Serial.println("  - SCK (SCLK): " + String(TFT_SCLK));
+  // Serial.println("  - LED:        " + String(TFT_BL));
+  Serial.println("  - SDO (MISO): " + String(TFT_MISO)); 
+
+  pinMode(TFT_LED_PIN, OUTPUT);
+  digitalWrite(TFT_LED_PIN, 1); // turn LED backlight on
 
   // setup the TFT screen
   tft.init();
@@ -103,7 +123,7 @@ void loop() {
 
   // display the current time
   tft.setTextDatum(TC_DATUM);
-  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString(current_time, current_time_x, current_time_y, 7);
 
   // draw horizontal black line
@@ -146,7 +166,7 @@ void loop() {
   int bikes[2];
   error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
 
-  // get two trams in each direction
+  // get three trams in each direction
   int nr_of_connections = 3;
   SBB_Connection trams_rehalp[nr_of_connections];
   SBB_Connection trams_auzelg[nr_of_connections];
@@ -179,7 +199,22 @@ void loop() {
   int tram_connections_y = tram_connections_top_y + 10; // including padding
   tft.fillRect(tram_connections_south_x, tram_connections_y, 185, 80, TFT_BLACK);
   tft.fillRect(tram_connections_north_x-60, tram_connections_y, 185, 80, TFT_BLACK);
+  bool not_enough_connections = false;
   for(int i = 0; i < nr_of_connections; i++) {
+
+    if(counter_rehalp < nr_of_connections && i >= counter_rehalp) {
+      // draw an error string
+      tft.drawString("not enough connections", tram_connections_south_x, tram_connections_y, 2);
+      not_enough_connections = true;
+    }
+    if(counter_auzelg < nr_of_connections && i >= counter_auzelg) {
+      // draw an error string
+      tft.drawString("not enough connections", tram_connections_north_x, tram_connections_y, 2);
+      not_enough_connections = true;
+    }
+    if(not_enough_connections) {
+      break;
+    }
 
     // rehalp
     my_sbb_api.timestring_to_ints(trams_rehalp[i].TimetabledTime, time);
@@ -363,7 +398,7 @@ void loop() {
 
     // display the current time
     tft.setTextDatum(TC_DATUM);
-    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.drawString(current_time, current_time_x, current_time_y, 7);
 
     // display the delays
@@ -395,7 +430,42 @@ void loop() {
     }
     delay(1000);
   }
+
+
+  // sleep overnight
+  int hours = current_time_int[0];
+  int minutes = current_time_int[1];
+  int seconds = 0;
+  int seconds_to_sleep = 0;
+  if (hours >= HOUR_EVENING_END || hours < HOUR_MORNING_START) {    
+    seconds_to_sleep = (60-seconds) + 60*(60-1-minutes) + 60*60*(HOUR_MORNING_START-1-hours);
+    // Serial.printf("DEBUG: seconds_to_sleep=%d\n", seconds_to_sleep);
+    if (seconds_to_sleep < 0) {
+      seconds_to_sleep = (60-seconds) + 60*(60-1-minutes) + 60*60*(HOUR_MORNING_START-1 + 24-hours);
+    // Serial.printf("DEBUG: seconds_to_sleep=%d\n", seconds_to_sleep);
+    }
+
+    go_to_deep_sleep(seconds_to_sleep);
+  }
   
   // delay(5000);
 
+}
+
+
+void go_to_deep_sleep(long seconds) {
+
+   // go into deep sleep
+  esp_sleep_enable_timer_wakeup(seconds * uS_TO_S_FACTOR);
+
+  // shutdown MPU
+  digitalWrite(TFT_LED_PIN, TFT_LED_OFF);
+	gpio_deep_sleep_hold_en(); 
+
+  Serial.printf("Going to sleep now for %ld seconds...\n", seconds);
+  Serial.flush(); 
+  while(1) {
+    esp_deep_sleep_start();
+    delay(1000);
+  }
 }
