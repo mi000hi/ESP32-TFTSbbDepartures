@@ -26,6 +26,7 @@ void ntp_time_initialize();
 bool ntp_time_isTimeSet();
 void ntp_time_update();
 String ntp_time_getFormattedTime();
+bool check_summer_time(unsigned long sec_since_epoch);
 int ntp_time_getDay();
 unsigned long ntp_time_getEpochTime();
 String format_time(unsigned long sec_since_epoch, const char* format);
