@@ -38,6 +38,7 @@
 #define IS_SUMMER_TIME false // 1 in summer, 0 in winter
 bool is_summer_time = IS_SUMMER_TIME;
 #define AUTO_SET_SUMMER_TIME true // IS_SUMMER_TIME will be automatically set
+int current_time_int[] = {0, 0, 0};
 
 #define TFT_LED_PIN 33
 #define TFT_LED_OFF 0
@@ -53,14 +54,7 @@ TFT_eSPI tft = TFT_eSPI(); // Invoke custom library, pin declaration in User_Set
 // stores the minute the API was updated, therefore every minute an API request takes place
 int last_min_updated = 0;
 
-
-
-void setup() {
-
-    // initialize serial communication
-    Serial.begin(SERIAL_BAUDRATE);
-    Serial.println("\nRunning the setup() function...");
-
+void serial_print_spi_tft_info() {
     Serial.println("SPI frequency: " + String(SPI_FREQUENCY)); 
     Serial.println("TFT pins:");
     Serial.println("  - CS:         " + String(TFT_CS));
@@ -70,81 +64,21 @@ void setup() {
     Serial.println("  - SCK (SCLK): " + String(TFT_SCLK));
     // Serial.println("  - LED:        " + String(TFT_BL));
     Serial.println("  - SDO (MISO): " + String(TFT_MISO)); 
-
-    pinMode(TFT_LED_PIN, OUTPUT);
-    digitalWrite(TFT_LED_PIN, 1); // turn LED backlight on
-
-    // setup the TFT screen
-    tft.init();
-    tft.setRotation(3); // connections on the left side of the display
-    tft.setCursor(0,0,2);
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(1);
-    tft.println("Display initialized...");
-    
-    // connect to wifi network
-    connect_to_wifi(WIFI_NETWORK_NUMBER);
-    tft.print("WiFi connected to SSID " + wifi_get_ssid() + " with IP ");
-    tft.print(wifi_get_ip());
-    tft.println("...");
-
-    // initialize ntp time
-    ntp_time_initialize();
-
-
-    // wait for time to be synchronized
-    tft.println("Synchronizing time...");  
-    while(!ntp_time_isTimeSet()) {
-        ntp_time_update();
-        Serial.println("Time not synchronized...");
-        delay(1000);
-    }
-
-    // summertime settings
-    if(AUTO_SET_SUMMER_TIME) {
-        int epoch_time = ntp_time_getEpochTime();
-        is_summer_time = check_summer_time(epoch_time);
-    }
-    
-    tft.println("setup() finished...\n");
-    delay(1000);
-    tft.fillScreen(TFT_BLACK);
 }
 
-void loop() {
-
-    // get current time
-    ntp_time_update();
-
-    int current_time_int[3];
-    last_min_updated = current_time_int[1];
-    int epoch_time = ntp_time_getEpochTime();
-    String current_date_and_time = format_time(epoch_time, API_TIME_FORMAT) + "Z";
-
-    my_sbb_api.timestring_to_ints(current_date_and_time, current_time_int);
-    time_zulu_to_local(current_time_int, current_time_int, is_summer_time);
-    epoch_time += is_summer_time * 3600;
-    String current_time = format_time(epoch_time, "%H:%M:%S");
-
-    int current_time_y = 5; // top padding
-    int current_time_x = TFT_WIDTH/2; // middle aligned
-
+int tft_draw_time(String time, int pos_x_in_px, int pos_y_in_px) {
     // display the current time
     tft.setTextDatum(TC_DATUM);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString(current_time, current_time_x, current_time_y, 7);
+    tft.drawString(time, pos_x_in_px, pos_y_in_px, 7);
+    int max_y_in_px = pos_y_in_px + tft.fontHeight(7);
+    return max_y_in_px;
+}
 
-    // draw horizontal black line
-    int first_line_y = current_time_y + tft.fontHeight(7) + 5; // including padding
-    tft.drawWideLine(0, first_line_y, TFT_WIDTH, first_line_y, 2.0, TFT_WHITE, TFT_WHITE);
-
-
-    // draw SOUTH and NORTH labels
-    int tram_connections_top_y = first_line_y + 2 + 5; // including padding
+void tft_draw_tram_labels(int pos_y_in_px) {
     int label1_width = 3*tft.fontHeight(4) + 15;
     int label1_height = 20;  
-    int label1_rotated_x = TFT_HEIGHT - tram_connections_top_y - label1_width;
+    int label1_rotated_x = TFT_HEIGHT - pos_y_in_px - label1_width;
     int label_padding_to_border = 5;
     int label1_rotated_y = label_padding_to_border; // padding
 
@@ -159,73 +93,64 @@ void loop() {
     tft.setTextDatum(CC_DATUM);
     tft.drawString("T11 NORTH", label1_rotated_x + label1_width/2, label2_rotated_y + label1_height/2);
     tft.setRotation(3);
+}
 
-
-
-    //
-    // draw tram connections
-    //
-
-    // send API request
-    SBB_Connection connections[NR_OF_SBB_CONNECTIONS];
+void get_sbb_connections(String current_date_and_time, SBB_Connection* connections, int nr_sbb_connections, SBB_Connection* trams_rehalp, SBB_Connection* trams_auzelg, int nr_individual_connections) {
     my_sbb_api.get_connections(connections, current_date_and_time, current_date_and_time, NR_OF_SBB_CONNECTIONS);
 
-    // send PUBLIBIKE API requests
-    int error = 0;
-    int bikes[2];
-    error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
-
     // get three trams in each direction
-    int nr_of_connections = 3;
-    SBB_Connection trams_rehalp[nr_of_connections];
-    SBB_Connection trams_auzelg[nr_of_connections];
+    
     int counter_rehalp = 0;
     int counter_auzelg = 0;
     for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
         if(connections[i].vehicleType == TRAM) {
-            if(string_equal(connections[i].destination, "Zürich, Rehalp") && counter_rehalp < nr_of_connections) {
+            if(string_equal(connections[i].destination, "Zürich, Rehalp") && counter_rehalp < nr_individual_connections) {
                 trams_rehalp[counter_rehalp] = connections[i];
                 counter_rehalp++;
-            } else if(string_equal(connections[i].destination, "Zürich, Auzelg") && counter_auzelg < nr_of_connections) {
+            } else if(string_equal(connections[i].destination, "Zürich, Auzelg") && counter_auzelg < nr_individual_connections) {
                 trams_auzelg[counter_auzelg] = connections[i];
                 counter_auzelg++;
             }
         }
     }
 
-    if(counter_rehalp < nr_of_connections || counter_auzelg < nr_of_connections) {
+    if(counter_rehalp < nr_individual_connections || counter_auzelg < nr_individual_connections) {
         Serial.println("WARNING: not enough tram connections! rehalp: " + String(counter_rehalp) + ", auzelg: " + String(counter_auzelg));
     }
+}
 
+void tft_draw_tram_connections(int pos_y, SBB_Connection* trams_rehalp, SBB_Connection* trams_auzelg, int nr_individual_connections) {
     String tram_rehalp_1, tram_rehalp_2, tram_auzelg_1, tram_auzelg_2;
     String bike_1, bike_2;
-
     String tram_rehalp, tram_auzelg, delay_string;
     int delay_mins;
     int time[3];
+    int label_padding_to_border = 5;
+    int label1_height = 20;
     int tram_connections_south_x = label_padding_to_border + label1_height + 5; // including padding
     int tram_connections_north_x = TFT_WIDTH - tram_connections_south_x - tft.textWidth("12:34:56+0", 4);
-    int tram_connections_y = tram_connections_top_y + 10; // including padding
+    int tram_connections_y = pos_y + 10; // including padding
     tft.fillRect(tram_connections_south_x, tram_connections_y, 185, 80, TFT_BLACK);
     tft.fillRect(tram_connections_north_x-60, tram_connections_y, 185, 80, TFT_BLACK);
     bool not_enough_connections = false;
-    for(int i = 0; i < nr_of_connections; i++) {
+    for(int i = 0; i < nr_individual_connections; i++) {
         tft.setTextDatum(TL_DATUM);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
-        if(counter_rehalp < nr_of_connections && i >= counter_rehalp) {
-            // draw an error string
-            tft.drawString("not enough connections", tram_connections_south_x, tram_connections_y, 2);
-            not_enough_connections = true;
-        }
-        if(counter_auzelg < nr_of_connections && i >= counter_auzelg) {
-            // draw an error string
-            tft.drawString("not enough connections", tram_connections_north_x, tram_connections_y, 2);
-            not_enough_connections = true;
-        }
-        if(not_enough_connections) {
-            break;
-        }
+        // TODO: make better
+        // if(counter_rehalp < nr_individual_connections && i >= counter_rehalp) {
+        //     // draw an error string
+        //     tft.drawString("not enough connections", tram_connections_south_x, tram_connections_y, 2);
+        //     not_enough_connections = true;
+        // }
+        // if(counter_auzelg < nr_individual_connections && i >= counter_auzelg) {
+        //     // draw an error string
+        //     tft.drawString("not enough connections", tram_connections_north_x, tram_connections_y, 2);
+        //     not_enough_connections = true;
+        // }
+        // if(not_enough_connections) {
+        //     break;
+        // }
 
         // rehalp
         my_sbb_api.timestring_to_ints(trams_rehalp[i].TimetabledTime, time);
@@ -266,10 +191,11 @@ void loop() {
         tft.drawString(tram_auzelg, tram_connections_north_x, tram_connections_y, 4);
         tram_connections_y += tft.fontHeight(4);
     }
+}
 
-    // publibikes
+void tft_draw_publibikes(int pos_y, int* bikes) {
     int publibike_label_x = TFT_WIDTH/2;
-    int publibike_label_y = tram_connections_top_y;
+    int publibike_label_y = pos_y;
 
     String bike_string = String(bikes[0]) + "-" + String(bikes[1]);
 
@@ -286,16 +212,15 @@ void loop() {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.drawString(bike_string, publibike_label_x, publibike_y, 4);
 
-    
-    // horizontal line
-    int second_line_y = tram_connections_top_y + label1_width + 5; // including padding
-    tft.drawWideLine(0, second_line_y, TFT_WIDTH, second_line_y, 2.0, TFT_WHITE, TFT_WHITE);
+}
 
-
-    // other connections
+void tft_draw_other_connections(int pos_y, SBB_Connection* connections) {
+    int time[3];
     int connections_x = 5;
-    int connections_y = second_line_y + 2 + 5; // including padding
-    int col1 = connections_x, col2 = 70, col3 = 105;
+    int connections_y = pos_y + 2 + 5; // including padding
+    int col1 = connections_x;
+    int col2 = 70;
+    int col3 = 105;
     SBB_Connection connection;
     tft.setTextFont(2);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -329,19 +254,20 @@ void loop() {
 
         connections_y += tft.fontHeight(2) + 3;
     }
+}
 
-
-    // vertical line
-    int third_line_x = TFT_WIDTH/2;
-    int third_line_y = second_line_y; // including padding
-    tft.drawWideLine(third_line_x, third_line_y, third_line_x, TFT_HEIGHT, 2.0, TFT_WHITE, TFT_WHITE);
-
-    // tram connections
+void tft_draw_other_tram_connections(int pos_y, SBB_Connection* connections) {
     int connections_tram_x = TFT_WIDTH/2;
-    int connections_tram_y = second_line_y + 2 + 5; // including padding
+    int connections_tram_y = pos_y + 2 + 5; // including padding
+    int col1 = 5;
+    int col2 = 70;
+    int col3 = 105;
     int col1_tram = col1 + connections_tram_x;
     int col2_tram = col2 + connections_tram_x;
     int col3_tram = col3 + connections_tram_x;
+    SBB_Connection connection;
+    String connections_time, connections_destination;
+    int time[3];
     for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
         connection = connections[i];
 
@@ -369,9 +295,118 @@ void loop() {
 
         connections_tram_y += tft.fontHeight(2) + 3;
     }
+}
 
+void setup() {
+
+    // initialize serial communication
+    Serial.begin(SERIAL_BAUDRATE);
+    Serial.println("\nRunning the setup() function...");
+
+    // initialize the TFT screen
+    serial_print_spi_tft_info();
+    pinMode(TFT_LED_PIN, OUTPUT);
+    digitalWrite(TFT_LED_PIN, 1); // turn LED backlight on
+    tft.init();
+    tft.setRotation(3); // connections on the left side of the display
+    tft.setCursor(0,0,2);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(1);
+    tft.println("Display initialized...");
+    
+    // connect to wifi network
+    connect_to_wifi(WIFI_NETWORK_NUMBER);
+    tft.print("WiFi connected to SSID " + wifi_get_ssid() + " with IP ");
+    tft.print(wifi_get_ip());
+    tft.println("...");
+
+    // initialize ntp time
+    tft.println("Synchronizing time...");  
+    ntp_time_initialize();
+    while(!ntp_time_isTimeSet()) { // wait for time to be synchronized
+        ntp_time_update();
+        Serial.println("Time not synchronized...");
+        delay(1000);
+    }
+
+    // auto summertime
+    if(AUTO_SET_SUMMER_TIME) {
+        int epoch_time = ntp_time_getEpochTime();
+        is_summer_time = check_summer_time(epoch_time);
+    }
+    
+    tft.println("setup() finished...\n");
+    delay(1000);
+    tft.fillScreen(TFT_BLACK);
+}
+
+void loop() {
+
+    // get current time
+    ntp_time_update();
+    last_min_updated = current_time_int[1];
+    int epoch_time = ntp_time_getEpochTime();
+    String current_date_and_time = format_time(epoch_time, API_TIME_FORMAT) + "Z";
+
+    my_sbb_api.timestring_to_ints(current_date_and_time, current_time_int);
+    time_zulu_to_local(current_time_int, current_time_int, is_summer_time);
+    epoch_time += is_summer_time * 3600;
+    String current_time = format_time(epoch_time, "%H:%M:%S");
+
+    int current_time_y = 5; // top padding
+    int current_time_x = TFT_WIDTH/2; // middle aligned
+
+    int first_line_y = tft_draw_time(current_time, current_time_x, current_time_y) + 5;
+    
+    tft.drawWideLine(0, first_line_y, TFT_WIDTH, first_line_y, 2.0, TFT_WHITE, TFT_WHITE);
+
+
+    // draw SOUTH and NORTH labels
+    int tram_connections_top_y = first_line_y + 2 + 5; // including padding
+    tft_draw_tram_labels(tram_connections_top_y);
+
+
+    //
+    // draw tram connections
+    //
+
+    // send PUBLIBIKE API requests
+    int error = 0;
+    int bikes[2];
+    error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
+
+    // send API request
+    SBB_Connection connections[NR_OF_SBB_CONNECTIONS];
+
+    int nr_of_connections = 3;
+    SBB_Connection trams_rehalp[nr_of_connections];
+    SBB_Connection trams_auzelg[nr_of_connections];
+    get_sbb_connections(current_date_and_time, connections, NR_OF_SBB_CONNECTIONS, trams_rehalp, trams_auzelg, nr_of_connections);
+
+    tft_draw_tram_connections(tram_connections_top_y, trams_rehalp, trams_auzelg, nr_of_connections);
+
+    // publibikes
+    tft_draw_publibikes(tram_connections_top_y, bikes);
+    
+    // horizontal line
+    int label1_width = 3*tft.fontHeight(4) + 15;
+    int second_line_y = tram_connections_top_y + label1_width + 5; // including padding
+    tft.drawWideLine(0, second_line_y, TFT_WIDTH, second_line_y, 2.0, TFT_WHITE, TFT_WHITE);
+
+    // other connections
+    tft_draw_other_connections(second_line_y, connections);
+
+    // vertical line
+    int third_line_x = TFT_WIDTH/2;
+    int third_line_y = second_line_y; // including padding
+    tft.drawWideLine(third_line_x, third_line_y, third_line_x, TFT_HEIGHT, 2.0, TFT_WHITE, TFT_WHITE);
+
+    // tram connections
+    tft_draw_other_tram_connections(second_line_y, connections);
 
     // delay counter
+    String connections_time;
     if(string_equal(trams_rehalp[0].EstimatedTime, "-1")) {
         connections_time = trams_rehalp[0].TimetabledTime;
     } else {
@@ -384,7 +419,6 @@ void loop() {
     } else {
         connections_time = trams_auzelg[0].EstimatedTime;
     }
-
     int time_to_auzelg_sec = my_sbb_api.get_delay_in_seconds(current_date_and_time, connections_time);
 
     int delay_rehalp_x = TFT_WIDTH/2 - 30;
