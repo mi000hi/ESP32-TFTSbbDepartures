@@ -1,4 +1,3 @@
-
 #include "arduino_secrets.h"
 
 /*  
@@ -64,6 +63,18 @@ void serial_print_spi_tft_info() {
     Serial.println("  - SCK (SCLK): " + String(TFT_SCLK));
     // Serial.println("  - LED:        " + String(TFT_BL));
     Serial.println("  - SDO (MISO): " + String(TFT_MISO)); 
+
+    if(!String(TFT_CS).equals("12")) {
+      Serial.println("\n**********\nThe TFT pins are configured wrong!");
+      Serial.println("Copy the following Code into the selected Setup file (see User_Setup_Select.h):\n");
+      Serial.println("#define TFT_MISO  32  // (leave TFT SDO disconnected if other SPI devices share MISO)");
+      Serial.println("#define TFT_MOSI  26");
+      Serial.println("#define TFT_SCLK  25");
+      Serial.println("#define TFT_CS    12  // Chip select control pin");
+      Serial.println("#define TFT_DC    27  // Data Command control pin");
+      Serial.println("#define TFT_RST   14  // Reset pin (could connect to RST pin)");
+      Serial.println("**********\n");
+    }
 }
 
 int tft_draw_time(String time, int pos_x_in_px, int pos_y_in_px) {
@@ -374,7 +385,8 @@ void loop() {
     // send PUBLIBIKE API requests
     int error = 0;
     int bikes[2];
-    error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
+    // error |= my_publibike_api.get_available_bikes(bikes, "Radiostudio");
+    error |= my_publibike_api.get_available_bikes(bikes, my_publibike_api.RADIOSTUDIO_STATION_ID);
 
     // send API request
     SBB_Connection connections[NR_OF_SBB_CONNECTIONS];
