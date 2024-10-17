@@ -1,5 +1,19 @@
 #include "sbb_api.h"
 
+
+
+// DEBUG mode
+// #define SBB_DEBUG_MODE // uncomment this line to debug
+#ifdef SBB_DEBUG_MODE
+  #define DEBUG_PRINT(x) Serial.println(x)
+  #define DEBUG(code) code  // Executes the code if DEBUG_MODE is enabled
+#else
+  #define DEBUG_PRINT(x)  // No-op when debug mode is disabled
+  #define DEBUG(code)       // No-op (empty) if DEBUG_MODE is disabled
+#endif
+
+
+
 String sbb_api::send_api_request(String timestamp, String time_of_departure, int nr_of_results) {
 
   // check timestamp format: "2023-02-20T20:03:00"
@@ -162,6 +176,8 @@ START:
     // start = connection_string.indexOf("<trias:Text>", start);
     // end   = connection_string.indexOf("</trias:Text>", start);
     // connections[i].nextStop = connection_string.substring(start + 13, end);
+
+    DEBUG_PRINT(connection_string);
 
     // strip connection from response
     response = response.substring(connection_end + 1);

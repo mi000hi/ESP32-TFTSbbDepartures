@@ -1,15 +1,37 @@
 #include "arduino_secrets.h"
 
+
+
+// DEBUG mode
+// #define DEBUG_MODE // uncomment this line to debug
+#ifdef DEBUG_MODE
+  #define DEBUG_PRINT(x) Serial.println(x)
+  #define DEBUG(code) code  // Executes the code if DEBUG_MODE is enabled
+#else
+  #define DEBUG_PRINT(x)  // No-op when debug mode is disabled
+  #define DEBUG(code)       // No-op (empty) if DEBUG_MODE is disabled
+#endif
+
+
+
 /*  
- Make sure all the required fonts are loaded by editing the
- User_Setup.h file in the TFT_eSPI library folder.
+
+#
+# TFT Display configuration
+#
+
+  Configuration in the User_Setup.h file:
+  - load the ILI9488_DRIVER
+  - set the TFT pins according to the message printed, evt also set TFT_BL to pin 33
+  - load all the fonts
+  - choose an SPI_FREQUENCY
 
     ##############################################################################
-    ###### DON'T FORGET TO UPDATE THE User_Setup.h  AND User_Setup_Select.h ######
+    ###### DON'T FORGET TO UPDATE THE User_Setup.h AND User_Setup_Select.h  ######
     ###### FILES IN THE LIBRARY                                             ######
     ##############################################################################
- */
-// #include <SPI.h>
+  
+*/
 
 #include <TFT_eSPI.h> // using the ili9488 display driver and my own setup file
 
@@ -17,8 +39,6 @@
 #include "utils.h"
 #include "sbb_api.h"
 #include "publibike_api.h"
-
-
 
 // deep sleep variables
 #define HOUR_MORNING_START 5
@@ -48,6 +68,12 @@ sbb_api my_sbb_api;
 publibike_api my_publibike_api;
 TFT_eSPI tft = TFT_eSPI(); // Invoke custom library, pin declaration in User_Setup_Select.h
 
+String destinations_north[] = {"Auzelg"};
+int destinations_north_size = 1;
+String destinations_south[] = {"Rehalp", "Bucheggplatz"};
+int destinations_south_size = 2;
+
+extern gpio_dev_t GPIO;
 
 
 // stores the minute the API was updated, therefore every minute an API request takes place
@@ -115,11 +141,35 @@ void get_sbb_connections(String current_date_and_time, SBB_Connection* connectio
     int counter_auzelg = 0;
     for(int i = 0; i < NR_OF_SBB_CONNECTIONS; i++) {
         if(connections[i].vehicleType == TRAM) {
-            if(string_equal(connections[i].destination, "Zürich, Rehalp") && counter_rehalp < nr_individual_connections) {
+            DEBUG_PRINT("Tram connection:");
+            DEBUG(my_sbb_api.print_connection(&connections[i]));
+
+            String destination = connections[i].destination;
+
+            bool destination_is_north = false;
+            for(int i = 0; i < destinations_north_size; i++) {
+              if(string_equal(destination, destinations_north[i])) {
+                destination_is_north = true;
+                break;
+              }
+            }
+            bool destination_is_south = false;
+            for(int i = 0; i < destinations_south_size; i++) {
+              if(string_equal(destination, destinations_south[i])) {
+                destination_is_south = true;
+                break;
+              }
+            }
+
+            if(destination_is_south && counter_rehalp < nr_individual_connections) {
                 trams_rehalp[counter_rehalp] = connections[i];
+                DEBUG_PRINT("Connection to Rehalp:");
+                DEBUG(my_sbb_api.print_connection(&connections[i]));
                 counter_rehalp++;
-            } else if(string_equal(connections[i].destination, "Zürich, Auzelg") && counter_auzelg < nr_individual_connections) {
+            } else if(destination_is_north && counter_auzelg < nr_individual_connections) {
                 trams_auzelg[counter_auzelg] = connections[i];
+                DEBUG_PRINT("Connection to Auzelg:");
+                DEBUG(my_sbb_api.print_connection(&connections[i]));
                 counter_auzelg++;
             }
         }
@@ -396,6 +446,7 @@ void loop() {
     SBB_Connection trams_auzelg[nr_of_connections];
     get_sbb_connections(current_date_and_time, connections, NR_OF_SBB_CONNECTIONS, trams_rehalp, trams_auzelg, nr_of_connections);
 
+    DEBUG(my_sbb_api.print_connection(trams_auzelg));
     tft_draw_tram_connections(tram_connections_top_y, trams_rehalp, trams_auzelg, nr_of_connections);
 
     // publibikes
@@ -517,7 +568,7 @@ void go_to_deep_sleep(long seconds) {
 
     // shutdown MPU
     digitalWrite(TFT_LED_PIN, TFT_LED_OFF);
-        gpio_deep_sleep_hold_en(); 
+        gpio_ll_deep_sleep_hold_en(&GPIO); 
 
     Serial.printf("Going to sleep now for %ld seconds...\n", seconds);
     Serial.flush(); 
